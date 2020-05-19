@@ -389,6 +389,6 @@ static void icmp_sigint(int signo) {
     alive = 0;                            /*告诉接收和发送线程结束程序*/
     gettimeofday(&tv_end, NULL);        /*读取程序结束时间*/
     tv_interval = icmp_tvsub(tv_end, tv_begin);  /*计算一下总共所用时间*/
-
+    icmp_statistics();
     return;
 }

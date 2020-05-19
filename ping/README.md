@@ -41,7 +41,7 @@ ICMP协议消息类型有很多种、常见的有如下的几种：
 
 ICMP报头的格式设置如下所示:
 
-![image-20200519211520398](README.assets/image-20200519211520398.png)
+![image-20200519211520398](https://zhaojunchen-website-1259455842.cos.ap-shanghai.myqcloud.com/markdown/20200519224958.png)
 
 **各字段说明**
 
@@ -56,7 +56,7 @@ ping程序请求远程主机所使用的ICMP的类型为**回显请求**
 
 回显请求的报文格式如下：
 
-![image-20200519212611266](README.assets/image-20200519212611266.png)
+![image-20200519212611266](https://zhaojunchen-website-1259455842.cos.ap-shanghai.myqcloud.com/markdown/20200519225002.png)
 
 就是上面所说的**头部（没有选型字段）+ 数据部分**
 
@@ -329,3 +329,84 @@ static void *icmp_recv(void *argv) {
 
 ## 4. 主程序流程
 
+0.ICMP协议类型设置
+
+```
+ struct protoent *protocol = NULL;
+ char protoname[] = "icmp";
+ /*获取协议类型ICMP*/
+ protocol = getprotobyname(protoname);
+```
+
+1.初始化ICMP的raw sock
+
+```
+ /*socket初始化*/
+    rawsock = socket(AF_INET, SOCK_RAW, protocol->p_proto);
+```
+
+2.系列全局变量初始化（不多赘述）
+
+```
+/*复制目的地址字符串*/
+    memcpy(dest_str, argv[1], strlen(argv[1]) + 1);
+    memset(pingpacket, 0, sizeof(pingm_pakcet) * 128);
+    /*为了与其他进程的ping程序区别，加入pid*/
+    pid = getuid();
+    /*增大接收缓冲区，防止接收的包被覆盖*/
+    setsockopt(rawsock, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+    bzero(&dest, sizeof(dest));
+```
+
+3.目的IP地址解析（域名或者IP）
+
+```
+	dest.sin_family = AF_INET;
+    /*输入的目的地址为字符串IP地址*/
+    inaddr = inet_addr(argv[1]);
+    if (inaddr == INADDR_NONE) {
+        /*输入的是DNS地址*/
+        host = gethostbyname(argv[1]);
+        if (host == NULL) {
+            perror("gethostbyname");
+            return -1;
+        }
+        /*将地址复制到dest中*/
+        memcpy((char *) &dest.sin_addr, host->h_addr, host->h_length);
+    } else        /*为IP地址字符串*/
+    {
+        memcpy((char *) &dest.sin_addr, &inaddr, sizeof(inaddr));
+    }
+    /*打印提示*/
+    inaddr = dest.sin_addr.s_addr;
+```
+
+4.开启发送线程和接收线程
+
+```
+pthread_t send_id, recv_id;        /*建立两个线程，用于发送和接收*/
+int err = 0;
+err = pthread_create(&send_id, NULL, icmp_send, NULL);        /*发送*/
+if (err < 0) {
+    return -1;
+}
+err = pthread_create(&recv_id, NULL, icmp_recv, NULL);        /*接收*/
+if (err < 0) {
+    return -1;
+}
+/*等待线程结束*/
+    pthread_join(send_id, NULL);
+    pthread_join(recv_id, NULL);
+```
+
+5.清理并打印统计结果
+
+```
+/*清理并打印统计结果  程序使用SIGINT退出子线程、控制权转到主线程*/
+close(rawsock);
+icmp_statistics();
+```
+
+**注意ICMP发送需要使用root权限**
+
+![image-20200519224549793](https://zhaojunchen-website-1259455842.cos.ap-shanghai.myqcloud.com/markdown/20200519225009.png)
