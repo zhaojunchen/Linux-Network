@@ -14,12 +14,22 @@
 #include <pthread.h>
 
 /*保存已经发送包的状态值*/
+
+/**
+struct timeval{
+    __time_t tv_sec;		//  Seconds.
+    __suseconds_t tv_usec;	// Microseconds
+};*/
+/**
+ * ping关键信息
+ */
 typedef struct pingm_pakcet {
     struct timeval tv_begin;    /*发送的时间*/
     struct timeval tv_end;        /*接收到的时间*/
     short seq;                    /*序列号*/
     int flag;        /*1，表示已经发送但没有接收到回应包0，表示接收到回应包*/
 } pingm_pakcet;
+
 static pingm_pakcet pingpacket[128];
 
 static pingm_pakcet *icmp_findpacket(int seq);
@@ -43,7 +53,7 @@ static void icmp_sigint(int signo);
 static void icmp_usage();
 
 #define K 1024
-#define BUFFERSIZE 72                    /*发送缓冲区大小*/
+#define BUFFERSIZE 64                    /*发送缓冲区大小*/
 static char send_buff[BUFFERSIZE];
 static char recv_buff[2 * K];    /*为防止接收溢出，接收缓冲区设置大一些*/
 static struct sockaddr_in dest;        /*目的地址*/
@@ -144,7 +154,8 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-/*CRC16校验和计算icmp_cksum
+/**
+CRC16校验和计算icmp_cksum
 参数：
 	data:数据
 	len:数据长度
@@ -171,7 +182,13 @@ static unsigned short icmp_cksum(unsigned char *data, int len) {
     return ~sum;                            /*返回取反值*/
 }
 
-/*设置ICMP报头*/
+/**
+ **设置ICMP报文
+ * @param icmph 发送的报文
+ * @param seq   序列号（依次递增）
+ * @param tv    时间戳信息
+ * @param length icmp报文(头部+数据部分)总长度
+ */
 static void icmp_pack(struct icmp *icmph, int seq, struct timeval *tv, int length) {
     unsigned char i = 0;
     /*设置报头*/
@@ -180,7 +197,7 @@ static void icmp_pack(struct icmp *icmph, int seq, struct timeval *tv, int lengt
     icmph->icmp_cksum = 0;      /*先将cksum值填写0，便于之后的cksum计算*/
     icmph->icmp_seq = seq;            /*本报的序列号*/
     icmph->icmp_id = pid & 0xffff;    /*填写PID*/
-    for (i = 0; i < length; i++)
+    for (i = 0; i < length - 8; i++)
         icmph->icmp_data[i] = i;
     /*计算校验和*/
     icmph->icmp_cksum = icmp_cksum((unsigned char *) icmph, length);
@@ -271,9 +288,9 @@ static void *icmp_send(void *argv) {
             packet->flag = 1;                /*已经使用*/
             gettimeofday(&packet->tv_begin, NULL);    /*发送时间*/
         }
-
+        // 填充报文数据到发送缓冲区  icmp_pack填充 ICMP响应请求的报头和数据部分
         icmp_pack((struct icmp *) send_buff, packet_send, &tv, 64);
-        /*打包数据*/
+        // 原始套接字 发送 到目标主机
         size = sendto(rawsock, send_buff, 64, 0,        /*发送给目的地址*/
                       (struct sockaddr *) &dest, sizeof(dest));
         if (size < 0) {
@@ -293,7 +310,7 @@ static void *icmp_recv(void *argv) {
     tv.tv_usec = 200;
     tv.tv_sec = 0;
     fd_set readfd;
-    /*当没有信号发出一直接收数据*/
+    /*当没有信号出一直接收数据发*/
     while (alive) {
         int ret = 0;
         FD_ZERO(&readfd);
