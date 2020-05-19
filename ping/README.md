@@ -1,5 +1,8 @@
 # Ping程序设计
 
+[toc]
+[github: https://github.com/zhaojunchen/Linux-Network/tree/master/ping ](https://github.com/zhaojunchen/Linux-Network/tree/master/ping)
+
 ## 0. 设计框架
 
 ping程序一般按照下图的框架进行设计。主要分为
@@ -10,11 +13,11 @@ ping程序一般按照下图的框架进行设计。主要分为
 
 发送数据对组织好的数据进行发送，接收数据从网络上接收数据并判断其合法性，例如判断是否本进程发出的报文等，计算时间差反应网络的延时。
 
-<img src="README.assets/image-20200519210917147.png" alt="image-20200519210917147" style="zoom:50%;" />
+<img src="https://zhaojunchen-website-1259455842.cos.ap-shanghai.myqcloud.com/markdown/20200519225647.png" alt="image-20200519210917147" style="zoom:50%;" />
 
 
 
-## 1. 基础如下的知识
+## 1. 实验须知
 
 ### ICMP协议
 
@@ -31,6 +34,8 @@ ICMP协议消息类型有很多种、常见的有如下的几种：
 
 其中ping发送数据的时候类型为 **回显请求**  接收数据的时候类型为 **回显应答**
 
+
+
 ## 2. 发送数据
 
 发送数据对组织好的数据进行发送、送达到目标主机。
@@ -41,7 +46,7 @@ ICMP协议消息类型有很多种、常见的有如下的几种：
 
 ICMP报头的格式设置如下所示:
 
-![image-20200519211520398](https://zhaojunchen-website-1259455842.cos.ap-shanghai.myqcloud.com/markdown/20200519224958.png)
+![image-20200519211520398](README.assets/aHR0cHM6Ly96aGFvanVuY2hlbi13ZWJzaXRlLTEyNTk0NTU4NDIuY29zLmFwLXNoYW5naGFpLm15cWNsb3VkLmNvbS9tYXJrZG93bi8yMDIwMDUxOTIyNDk1OC5wbmc.jpg)
 
 **各字段说明**
 
@@ -54,22 +59,30 @@ ICMP报头的格式设置如下所示:
 
 ping程序请求远程主机所使用的ICMP的类型为**回显请求**
 
-回显请求的报文格式如下：
+**回显请求**的报文格式如下：
 
-![image-20200519212611266](https://zhaojunchen-website-1259455842.cos.ap-shanghai.myqcloud.com/markdown/20200519225002.png)
+![image-20200519212611266](README.assets/aHR0cHM6Ly96aGFvanVuY2hlbi13ZWJzaXRlLTEyNTk0NTU4NDIuY29zLmFwLXNoYW5naGFpLm15cWNsb3VkLmNvbS9tYXJrZG93bi8yMDIwMDUxOTIyNTAwMi5wbmc.jpg)
 
 就是上面所说的**头部（没有选型字段）+ 数据部分**
 
 ICMP回显请求报文的数据填充就是根据上图的格式填写正确的内容
 
-**填充如下：**
+**报文填充如下：**
+
+**报头部分**
 
 - ICMP回显请求的类型为8，即 ICMP ECHO。
 - ICMP回显请求的代码值为0。
 - ICMP回显请求的校验和后面会讲到
 - ICMP回显请求的序列号是一个16位的值，通常由一个递增的值生成。
-- ICMP回显请求的ID用于区别，通常用进程的PID填充进行ICMP头部校验的代码如下：
-- ICMP回显的数据部分可以任意设置，但是以太网包的总长度不能小于以太网的最小值，即总长度不能小于46.由于IP头部为20字节，ICMP头部为8个字节，以太网头部占用14个字节，因此ICMP回显包的最小值为46-20-8-14=4个字节。
+- ICMP回显请求的ID用于区别，通常用进程的PID填充进行ICMP头部校验
+- ICMP回显请求头部的选项部分未设置
+
+**数据部分**
+
+- ICMP回显的数据部分可以任意设置，但是以太网包的总长度不能小于以太网的最小值，即总长度不能小于46.由于IP头部为20字节，ICMP头部为8个字节，以太网头部占用14个字节，因此ICMP回显包的最小值为46-20-8-14=4个字节。   **本程序中ICMP的报文长度设置为64（8字节头部+其余56字节的 任意数据）**
+
+
 
 
 
@@ -79,16 +92,23 @@ ICMP回显请求报文的数据填充就是根据上图的格式填写正确的�
  * @param icmph 发送的报文
  * @param seq   序列号（依次递增）
  * @param tv    时间戳信息
- * @param length icmp报文(头部+数据部分)总长度
+ * @param length icmp报文(头部+数据部分)总长度  程序中设置为64  
  */
 static void icmp_pack(struct icmp *icmph, int seq, struct timeval *tv, int length) {
     unsigned char i = 0;
-    /*设置报头*/
+    /*设置ICMP的报头*/
+    // 请求类型
     icmph->icmp_type = ICMP_ECHO;    /*ICMP回显请求*/
+    // 请求码
     icmph->icmp_code = 0;            /*code值为0*/
+    // 校验和 
     icmph->icmp_cksum = 0;      /*先将cksum值填写0，便于之后的cksum计算*/
+    // 序列号
     icmph->icmp_seq = seq;            /*本报的序列号*/
     icmph->icmp_id = pid & 0xffff;    /*填写PID*/
+    
+    // 设置ICMP的数据部分
+    // length-8 = 56字节的数据部分填充
     for (i = 0; i < length - 8; i++)
         icmph->icmp_data[i] = i;
     /*计算校验和*/
@@ -111,7 +131,7 @@ static void icmp_pack(struct icmp *icmph, int seq, struct timeval *tv, int lengt
 /**
 CRC16校验和计算icmp_cksum
 参数：
-	data:数据
+	data:数据  注意的是ICMP校验包含了头部和数据部分  程序的ICMP总长度为64字节
 	len:数据长度
 返回值：
 	计算结果，short类型
@@ -162,21 +182,30 @@ static void *icmp_send(void *argv) {
         struct timeval tv;
         gettimeofday(&tv, NULL);            /*当前包的发送时间*/
         /*在发送包状态数组中找一个空闲位置*/
+        
+        // 寻找一个pingm_pakcet结构、记录当前ping包的时间戳信息和序列号等信息
         pingm_pakcet *packet = icmp_findpacket(-1);
         if (packet) {
+        	// 设置序列号
             packet->seq = packet_send;        /*设置seq*/
             packet->flag = 1;                /*已经使用*/
+            // 记录当前ping包的开始时间  结束时间在接收部分处理
             gettimeofday(&packet->tv_begin, NULL);    /*发送时间*/
         }
         // 填充报文数据到发送缓冲区  icmp_pack填充 ICMP响应请求的报头和数据部分
         icmp_pack((struct icmp *) send_buff, packet_send, &tv, 64);
+        
         // 原始套接字 发送 到目标主机
+        // rawsock：ICMP的原始套接字
+        // send_buff ICMP报文 
+        // 64 是报文的长度 dest是服务器地址
         size = sendto(rawsock, send_buff, 64, 0,        /*发送给目的地址*/
                       (struct sockaddr *) &dest, sizeof(dest));
         if (size < 0) {
             perror("sendto error");
             continue;
         }
+        // packet_send就是发送的序列号
         packet_send++;                    /*计数增加*/
         /*每隔1s，发送一个ICMP回显请求包*/
         sleep(1);
@@ -223,8 +252,10 @@ static int icmp_unpack(char *buf, int len) {
 
     ip = (struct ip *) buf;                    /*IP头部*/
     iphdrlen = ip->ip_hl * 4;                    /*IP头部长度*/
+    // icmp指向ICMP报文的起始地址
     icmp = (struct icmp *) (buf + iphdrlen);        /*ICMP段的地址*/
     len -= iphdrlen;
+    // len是ICMP报文的长度
     /*判断长度是否为ICMP包*/
     if (len < 8) {
         printf("ICMP packets\'s length is less than 8\n");
@@ -234,13 +265,16 @@ static int icmp_unpack(char *buf, int len) {
     if ((icmp->icmp_type == ICMP_ECHOREPLY) && (icmp->icmp_id == pid)) {
         struct timeval tv_internel, tv_recv, tv_send;
         /*在发送表格中查找已经发送的包，按照seq*/
+        // 已经使用的ping包（flag =1 存在seq）会被seq寻找到
         pingm_pakcet *packet = icmp_findpacket(icmp->icmp_seq);
         if (packet == NULL)
             return -1;
         packet->flag = 0;    /*取消标志*/
         tv_send = packet->tv_begin;            /*获取本包的发送时间*/
         gettimeofday(&tv_recv, NULL);        /*读取此时间，计算时间差*/
+        // timeval 时间差计算
         tv_internel = icmp_tvsub(tv_recv, tv_send);
+        // timeval 得到rtt往返时间
         rtt = tv_internel.tv_sec * 1000 + tv_internel.tv_usec / 1000;
         /*打印结果，包含
         *  ICMP段长度
@@ -249,13 +283,14 @@ static int icmp_unpack(char *buf, int len) {
         *  TTL
         *  时间差
         */
+        // 输出当前报文的信息
         printf("%d byte from %s: icmp_seq=%u ttl=%d rtt=%d ms\n",
                len,
                inet_ntoa(ip->ip_src),
                icmp->icmp_seq,
                ip->ip_ttl,
                rtt);
-
+		// 统计受到响应的ping包
         packet_recv++;                        /*接收包数量加1*/
     } else {
         return -1;
@@ -279,7 +314,12 @@ static struct timeval icmp_tvsub(struct timeval end, struct timeval begin) {
 }
 ```
 
-### 2、 接收数据
+### 2、 接收报文
+
+与发送函数一样，接收报文也用一个线程实现，使用 select轮询等待报文到来。当接收到一个报文后，使用函数 icmp _npack（来解包和查找报文之前发送时的记录，获取发送时间，计算收发差值并打印信息)
+（1）接收成功后将合法的报文记录重置为没有使用，fag为0
+（2）接收报文数量增加1。
+（3）为了防止丢包， select的轮询时间设置的比较短。
 
 接收来自目标地址的响应数据、并且将其送入imcp_packet解包
 
@@ -328,6 +368,33 @@ static void *icmp_recv(void *argv) {
 
 
 ## 4. 主程序流程
+
+ping程序的实现使用了两个线程，一个线程 icmp sendo用于发送请求，另一个线程icmp recv用于接收远程主机的响应。当变量 alive为0时，两个线程退出。
+
+### Ping数据结构
+
+程序使用类型为结构 struct ping_packet的变量 pingpacket用于保存发送数据报文的状态。
+
+- tv_begin用于保存发送的时间。
+- ty_end用于保存数据报文接收到的时间。
+- seq是序列号，用于标识报文，作为索引。
+- flag用于表示本单元的状态，表示数据报文已经发送，但是没有收到回应包；0表示已经接收到回应报文，这个单元可以再次用于标识发送的报文。
+
+```
+typedef struct pingm_pakcet {
+    struct timeval tv_begin;    /*发送的时间*/
+    struct timeval tv_end;        /*接收到的时间*/
+    short seq;                    /*序列号*/
+    int flag;        /*1，表示已经发送但没有接收到回应包0，表示接收到回应包*/
+} pingm_pakcet;
+
+```
+
+
+
+
+
+### 主函数流程
 
 0.ICMP协议类型设置
 
@@ -407,6 +474,22 @@ close(rawsock);
 icmp_statistics();
 ```
 
-**注意ICMP发送需要使用root权限**
+### 注意点
 
-![image-20200519224549793](https://zhaojunchen-website-1259455842.cos.ap-shanghai.myqcloud.com/markdown/20200519225009.png)
+在主程序中需要注意如下几点：
+
+- 使用 getprotobyname函数获得icmp对应的ICMP协议值。对输入的目的主机地址兼容域名和IP地址，使用 gethostbynameo函数来获得DNS对应的IP地址， inet addo函数获得字符串类型的P地址对应的整型值。
+- 为了防止远程主机发送过大的包或者本地来不及接收现象的发生， setsockopt（ rawsock、 SOL SOCKET、 SO RCVBUF、&size、 sizeof（size）函数将 socket的接收缓冲区设置为128K
+- 对信号 SIGINT进行了截取、设置alive为0 让子线程主动退出，用以来结束函数
+- 建立两个线程 icmp_sendo和 icmp_recv进行接收和发送，然后主程序等待两个线程结束。
+- ICMP原始报文发送需要root权限
+
+
+
+### 运行结果
+
+![image-20200519224549793](README.assets/aHR0cHM6Ly96aGFvanVuY2hlbi13ZWJzaXRlLTEyNTk0NTU4NDIuY29zLmFwLXNoYW5naGFpLm15cWNsb3VkLmNvbS9tYXJrZG93bi8yMDIwMDUxOTIyNTAwOS5wbmc-1589903769198.jpg)
+
+## 参考文献
+
+\[ 1 ] : Linux网络程序设计
